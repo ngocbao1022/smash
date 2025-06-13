@@ -12,6 +12,7 @@
 !%          ``snow_module``            Snow module
 !%          ``hydrological_module``    Hydrological module
 !%          ``routing_module``         Routing module
+!%          ``hy1d_module``            Hydraulic 1D module
 !%          ``neurons``                Number of neurons in trainable layers
 !%          ``serr_mu_mapping``        Mapping for structural error model
 !%          ``serr_sigma_mapping``     Mapping for structural error model
@@ -56,6 +57,7 @@
 !%          ``n_layers``               Number of trainable layers
 !%          ``nrrp``                   Number of rainfall-runoff parameters
 !%          ``nrrs``                   Number of rainfall-runoff states
+!%          ``nhy1dp``                 Number of 1D vectorial hydraulic model parameters
 !%          ``nsep_mu``                Number of structural error parameters for mu
 !%          ``nsep_sigma``             Number of structural error parameters for sigma
 !%          ``nqz``                    Size of the temporal buffer for discharge grids
@@ -86,6 +88,7 @@ module mwd_setup
         character(lchar) :: snow_module = "..." !$F90W char
         character(lchar) :: hydrological_module = "..." !$F90W char
         character(lchar) :: routing_module = "..."!$F90W char
+        character(lchar) :: hy1d_module = "..."!$F90W char
 
         character(lchar) :: serr_mu_mapping = "..." !$F90W char
         character(lchar) :: serr_sigma_mapping = "..." !$F90W char
@@ -146,6 +149,7 @@ module mwd_setup
         integer :: nd = -99
         integer :: nrrp = -99
         integer :: nrrs = -99
+        integer :: nhy1dp = -99
         integer :: nsep_mu = -99
         integer :: nsep_sigma = -99
         integer :: nqz = -99

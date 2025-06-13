@@ -15,6 +15,7 @@ from smash._constant import (
     FEASIBLE_RR_PARAMETERS,
     FEASIBLE_SERR_MU_PARAMETERS,
     FEASIBLE_SERR_SIGMA_PARAMETERS,
+    HY1D_MODULE,
     HYDROLOGICAL_MODULE,
     HYDROLOGICAL_MODULE_RR_INTERNAL_FLUXES,
     INPUT_DATA_FORMAT,
@@ -31,6 +32,7 @@ from smash._constant import (
     STRUCTURE_RR_INTERNAL_FLUXES,
     STRUCTURE_RR_PARAMETERS,
     STRUCTURE_RR_STATES,
+    STRUCTURE_HY1D_PARAMETERS,
     get_neurons_from_hydrological_module,
 )
 
@@ -170,6 +172,21 @@ def _standardize_model_setup_routing_module(routing_module: str, **kwargs) -> st
         raise TypeError("routing_module model setup must be a str")
 
     return routing_module
+
+
+def _standardize_model_setup_hy1d_module(hy1d_module: str, **kwargs) -> str:
+    if isinstance(hy1d_module, str):
+        if hy1d_module.lower() in HY1D_MODULE:
+            hy1d_module = hy1d_module.lower()
+        else:
+            raise ValueError(
+                f"Unknown hydraulic 1D module '{hy1d_module}' for hy1d_module in model setup. "
+                f"Choices: {HY1D_MODULE}"
+            )
+    else:
+        raise TypeError("hy1d_module model setup must be a str")
+
+    return hy1d_module
 
 
 def _standardize_model_setup_serr_mu_mapping(serr_mu_mapping: str, **kwargs) -> str:
@@ -423,10 +440,8 @@ def _standardize_model_setup_descriptor_directory(
     return _standardize_model_setup_directory(read_descriptor, "descriptor_directory", descriptor_directory)
 
 
-def _standardize_model_setup_descriptor_name(
-    read_descriptor: bool, descriptor_name: ListLike | None, **kwargs
-) -> np.ndarray:
-    if (not read_descriptor) or (descriptor_name is None):
+def _standardize_model_setup_descriptor_name(descriptor_name: ListLike | None, **kwargs) -> np.ndarray:
+    if descriptor_name is None:
         descriptor_name = np.empty(shape=0)
     elif isinstance(descriptor_name, (list, tuple, np.ndarray)):
         descriptor_name = np.array(descriptor_name, ndmin=1)
@@ -509,6 +524,7 @@ def _standardize_model_setup_finalize(setup: dict):
             setup["snow_module"],
             setup["hydrological_module"],
             setup["routing_module"],
+            setup["hy1d_module"],
         ]
     )
 
@@ -520,9 +536,10 @@ def _standardize_model_setup_finalize(setup: dict):
     setup["n_layers"] = max(0, np.count_nonzero(setup["neurons"]) - 1)
 
     setup["ntime_step"] = int((setup["end_time"] - setup["start_time"]).total_seconds() / setup["dt"])
-    setup["nd"] = setup["descriptor_name"].size if setup["read_descriptor"] else 0
+    setup["nd"] = setup["descriptor_name"].size
     setup["nrrp"] = len(STRUCTURE_RR_PARAMETERS[setup["structure"]])
     setup["nrrs"] = len(STRUCTURE_RR_STATES[setup["structure"]])
+    setup["nhy1dp"] = len(STRUCTURE_HY1D_PARAMETERS[setup["structure"]])
     setup["nsep_mu"] = len(SERR_MU_MAPPING_PARAMETERS[setup["serr_mu_mapping"]])
     setup["nsep_sigma"] = len(SERR_SIGMA_MAPPING_PARAMETERS[setup["serr_sigma_mapping"]])
     setup["nqz"] = ROUTING_MODULE_NQZ[setup["routing_module"]]
@@ -560,6 +577,23 @@ def _standardize_rr_parameters_key(model: Model, key: str) -> str:
         raise ValueError(
             f"Unknown model rr_parameter '{key}'. Choices: {STRUCTURE_RR_PARAMETERS[model.setup.structure]}"
         )
+
+    return key.lower()
+
+
+def _standardize_hy1d_parameters_key(model: Model, key: str) -> str:
+    if not isinstance(key, str):
+        raise TypeError("key argument must be a str")
+
+    if key.lower() not in STRUCTURE_HY1D_PARAMETERS[model.setup.structure]:
+        if STRUCTURE_HY1D_PARAMETERS[model.setup.structure]:
+            raise ValueError(
+                f"Unknown model hy1d_parameter '{key}'. Choices: {STRUCTURE_HY1D_PARAMETERS[model.setup.structure]}"
+            )
+        else:
+            raise ValueError(
+                f"Unknown model hy1d_parameter '{key}'. There is no hydraulic module in model structure '{model.setup.structure}'"
+            )
 
     return key.lower()
 
@@ -666,6 +700,19 @@ def _standardize_rr_states_value(
     return value
 
 
+def _standardize_hy1d_parameters_value(
+    model: Model, key: str, value: Numeric | np.ndarray
+) -> Numeric | np.ndarray:
+    if not isinstance(value, (int, float, np.ndarray)):
+        raise TypeError("value argument must be of Numeric type (int, float) or np.ndarray")
+
+    arr = np.array(value, ndmin=1, dtype=np.float32)
+
+    # TODO: complete check hy1d parameter value here
+
+    return value
+
+
 def _standardize_serr_mu_parameters_value(
     model: Model, key: str, value: Numeric | np.ndarray
 ) -> Numeric | np.ndarray:
@@ -732,6 +779,12 @@ def _standardize_get_rr_initial_states_args(model: Model, key: str) -> str:
     return key
 
 
+def _standardize_get_hy1d_parameters_args(model: Model, key: str) -> str:
+    key = _standardize_hy1d_parameters_key(model, key)
+
+    return key
+
+
 def _standardize_get_serr_mu_parameters_args(model: Model, key: str) -> str:
     key = _standardize_serr_mu_parameters_key(model, key)
 
@@ -767,6 +820,14 @@ def _standardize_set_rr_initial_states_args(model: Model, key: str, value: Numer
     return (key, value)
 
 
+def _standardize_set_hy1d_parameters_args(model: Model, key: str, value: Numeric | np.ndarray) -> AnyTuple:
+    key = _standardize_hy1d_parameters_key(model, key)
+
+    value = _standardize_hy1d_parameters_value(model, key, value)
+
+    return (key, value)
+
+
 def _standardize_set_serr_mu_parameters_args(model: Model, key: str, value: Numeric | np.ndarray) -> AnyTuple:
     key = _standardize_serr_mu_parameters_key(model, key)
 
@@ -793,7 +854,7 @@ def _standardize_set_nn_parameters_weight_value(
 
     elif isinstance(value, list):
         weights = [
-            getattr(model._parameters.nn_parameters, f"weight_{i + 1}") for i in range(model.setup.n_layers)
+            getattr(model._parameters.nn_parameters, f"weight_{i+1}") for i in range(model.setup.n_layers)
         ]
 
         if len(value) != len(weights):
@@ -831,7 +892,7 @@ def _standardize_set_nn_parameters_bias_value(
 
     elif isinstance(value, list):
         biases = [
-            getattr(model._parameters.nn_parameters, f"bias_{i + 1}") for i in range(model.setup.n_layers)
+            getattr(model._parameters.nn_parameters, f"bias_{i+1}") for i in range(model.setup.n_layers)
         ]
 
         if len(value) != len(biases):

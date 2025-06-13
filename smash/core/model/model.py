@@ -8,12 +8,14 @@ import numpy as np
 from smash._constant import (
     DEFAULT_BOUNDS_RR_INITIAL_STATES,
     DEFAULT_BOUNDS_RR_PARAMETERS,
+    DEFAULT_BOUNDS_HY1D_PARAMETERS,
     DEFAULT_BOUNDS_SERR_MU_PARAMETERS,
     DEFAULT_BOUNDS_SERR_SIGMA_PARAMETERS,
     SERR_MU_MAPPING_PARAMETERS,
     SERR_SIGMA_MAPPING_PARAMETERS,
     STRUCTURE_RR_PARAMETERS,
     STRUCTURE_RR_STATES,
+    STRUCTURE_HY1D_PARAMETERS,
 )
 from smash.core.model._build_model import (
     _build_input_data,
@@ -26,6 +28,7 @@ from smash.core.model._standardize import (
     _standardize_get_rr_final_states_args,
     _standardize_get_rr_initial_states_args,
     _standardize_get_rr_parameters_args,
+    _standardize_get_hy1d_parameters_args,
     _standardize_get_serr_mu_parameters_args,
     _standardize_get_serr_sigma_parameters_args,
     _standardize_model_args,
@@ -33,6 +36,7 @@ from smash.core.model._standardize import (
     _standardize_set_nn_parameters_weight_args,
     _standardize_set_rr_initial_states_args,
     _standardize_set_rr_parameters_args,
+    _standardize_set_hy1d_parameters_args,
     _standardize_set_serr_mu_parameters_args,
     _standardize_set_serr_sigma_parameters_args,
 )
@@ -96,6 +100,7 @@ if TYPE_CHECKING:
     from smash.fcore._mwd_response_data import Response_DataDT
     from smash.fcore._mwd_rr_parameters import RR_ParametersDT
     from smash.fcore._mwd_rr_states import RR_StatesDT
+    from smash.fcore._mwd_hy1d_parameters import HY1D_ParametersDT
     from smash.fcore._mwd_serr_mu_parameters import SErr_Mu_ParametersDT
     from smash.fcore._mwd_serr_sigma_parameters import SErr_Sigma_ParametersDT
     from smash.fcore._mwd_u_response_data import U_Response_DataDT
@@ -205,7 +210,7 @@ class Model:
             Whether or not to read observed discharge file(s).
 
             .. hint::
-                See the :ref:`user_guide.data_and_format_description.format_description` section
+                See the :ref:`user_guide.classical_uses.using_user_provided_data` section
 
         qobs_directory : `str`
             Path to the root directory of the observed discharge file(s).
@@ -215,7 +220,7 @@ class Model:
             Whether or not to read precipitation file(s).
 
             .. hint::
-                See the :ref:`user_guide.data_and_format_description.format_description` section
+                See the :ref:`user_guide.classical_uses.using_user_provided_data` section
 
         prcp_format : `str`, default 'tif'
             Precipitation file format. This option is only applicable if **read_prcp** is set to True.
@@ -243,7 +248,7 @@ class Model:
             Whether or not to read potential evapotranspiration file(s).
 
             .. hint::
-                See the :ref:`user_guide.data_and_format_description.format_description` section
+                See the :ref:`user_guide.classical_uses.using_user_provided_data` section
 
         pet_format : `str`, default 'tif'
             Potential evapotranspiration file format. This option is only applicable if **read_pet** is set
@@ -278,7 +283,7 @@ class Model:
             This option is only applicable if **snow_module** is set to ``ssn``.
 
             .. hint::
-                See the :ref:`user_guide.data_and_format_description.format_description` section
+                See the :ref:`user_guide.classical_uses.using_user_provided_data` section
 
         snow_format : `str`, default 'tif'
             Snow file format. This option is only applicable if **read_snow** is set to True and if
@@ -310,7 +315,7 @@ class Model:
             Whether or not to read temperature file(s).
 
             .. hint::
-                See the :ref:`user_guide.data_and_format_description.format_description` section
+                See the :ref:`user_guide.classical_uses.using_user_provided_data` section
 
         temp_format : `str`, default 'tif'
             Temperature file format. This option is only applicable if **read_temp** is set to True and if
@@ -365,19 +370,6 @@ class Model:
             List of descriptor name.
             This option is ``mandatory`` if **read_descriptor** is set to True.
 
-        read_imperviousness : `bool`, default False
-            Whether or not to read descriptor file(s).
-
-        imperviousness_format : `str`, default 'tif'
-            This option is only applicable if **read_imperviousness** is set to True.
-
-            .. note::
-                Only the ``tif`` format is currently supported.
-
-        imperviousness_directory : `str`
-            Path to the imperviousness file.
-            This option is ``mandatory`` if **read_imperviousness** is set to True.
-
     mesh : `dict[str, Any]`
         Model initialization mesh dictionary.
 
@@ -430,6 +422,7 @@ class Model:
         rr_final_states: ['keys', 'values']
         rr_initial_states: ['keys', 'values']
         rr_parameters: ['keys', 'values']
+        hy1d_parameters: ['keys', 'values']
         serr_mu_parameters: ['keys', 'values']
         serr_sigma_parameters: ['keys', 'values']
         setup: ['adjust_interception', 'compute_mean_atmos', '...', 'temp_access', 'temp_directory']
@@ -445,7 +438,20 @@ class Model:
 
             _map_dict_to_fortran_derived_type(setup, self.setup)
 
-            self.mesh = MeshDT(self.setup, mesh["nrow"], mesh["ncol"], mesh["npar"], mesh["ng"])
+            self.mesh = MeshDT(
+                self.setup,
+                mesh["nrow"],
+                mesh["ncol"],
+                mesh["npar"],
+                mesh["ng"],
+                mesh["ncs"],
+                [mesh["cross_sections"][i]["nlevels"] for i in range(mesh["ncs"])],
+                [mesh["cross_sections"][i]["nlat"] for i in range(mesh["ncs"])],
+                [mesh["cross_sections"][i]["nup"] for i in range(mesh["ncs"])],
+                mesh["nseg"],
+                [mesh["segments"][i]["nds_seg"] for i in range(mesh["nseg"])],
+                [mesh["segments"][i]["nus_seg"] for i in range(mesh["nseg"])],
+            )
 
             _map_dict_to_fortran_derived_type(mesh, self.mesh)
 
@@ -942,6 +948,39 @@ class Model:
     @rr_parameters.setter
     def rr_parameters(self, value: RR_ParametersDT):
         self._parameters.rr_parameters = value
+
+    @property
+    def hy1d_parameters(self) -> HY1D_ParametersDT:
+        """
+        Model 1D hydraulic parameters.
+
+        Returns
+        -------
+        hy1d_parameters : `HY1D_ParametersDT <fcore._mwd_hy1d_parameters.HY1D_ParametersDT>`
+            It returns a Fortran derived type containing the variables relating to the 1D hydraulic
+            parameters.
+
+        See Also
+        --------
+        Model.get_hy1d_parameters : Get the values of a Model 1D hydraulic parameter.
+        Model.set_hy1d_parameters : Set the values of a Model 1D hydraulic parameter.
+
+        Examples
+        --------
+        >>> from smash.factory import load_dataset
+        >>> setup, mesh = load_dataset("cance")
+        >>> model = smash.Model(setup, mesh)
+
+        Access to Model 1D hydraulic parameters
+
+        TODO: complete here.
+        """
+
+        return self._parameters.hy1d_parameters
+
+    @hy1d_parameters.setter
+    def hy1d_parameters(self, value: HY1D_ParametersDT):
+        self._parameters.hy1d_parameters = value
 
     @property
     def rr_initial_states(self) -> RR_StatesDT:
@@ -1785,6 +1824,73 @@ class Model:
 
         self._parameters.rr_initial_states.values[..., ind] = value
 
+    def get_hy1d_parameters(self, key: str) -> NDArray[np.float32]:
+        """
+        Get the values of a Model 1D hydraulic parameter.
+
+        Parameters
+        ----------
+        key : `str`
+            The name of the 1D hydraulic parameter.
+
+        Returns
+        -------
+        value : `numpy.ndarray`
+            An array of the same shape as the 1D hydraulic mesh representing the 1D hydraulic parameter.
+
+        See Also
+        --------
+        Model.hy1d_parameters : Model 1D hydraulic parameters.
+
+        Examples
+        --------
+        >>> from smash.factory import load_dataset
+        >>> setup, mesh = load_dataset("cance")
+        >>> model = smash.Model(setup, mesh)
+
+        TODO: complete here
+        """
+
+        key = _standardize_get_hy1d_parameters_args(self, key)
+        ind = np.argwhere(self._parameters.hy1d_parameters.keys == key).item()
+
+        return self._parameters.hy1d_parameters.values[..., ind]
+
+    def set_hy1d_parameters(self, key: str, value: Numeric | NDArray[Any]):
+        """
+        Set the values of a Model 1D hydraulic parameter.
+
+        This method performs an in-place operation on the Model object.
+
+        Parameters
+        ----------
+        key : str
+            The name of the 1D hydraulic parameter.
+
+        value : `float` or `numpy.ndarray`
+            The value(s) to set to the 1D hydraulic parameter.
+            If the value is a `numpy.ndarray`, its shape must be broadcastable into the 1D hydraulic
+            parameter shape.
+
+        See Also
+        --------
+        Model.get_hy1d_parameters : Get the values of a Model 1D hydraulic parameter.
+        Model.hy1d_parameters : Model 1D hydraulic parameters.
+
+        Examples
+        --------
+        >>> from smash.factory import load_dataset
+        >>> setup, mesh = load_dataset("cance")
+        >>> model = smash.Model(setup, mesh)
+
+        TODO: complete here
+        """
+
+        key, value = _standardize_set_hy1d_parameters_args(self, key, value)
+        ind = np.argwhere(self._parameters.hy1d_parameters.keys == key).item()
+
+        self._parameters.hy1d_parameters.values[..., ind] = value
+
     def get_serr_mu_parameters(self, key: str) -> NDArray[np.float32]:
         """
         Get the values of a Model structural error mu parameter.
@@ -2204,6 +2310,26 @@ class Model:
             if key in STRUCTURE_RR_PARAMETERS[self.setup.structure]
         }
 
+    def get_hy1d_parameters_bounds(self) -> dict[str, tuple[float, float]]:
+        """
+        Get the boundary condition for the Model 1D hydraulic parameters.
+
+        Returns
+        -------
+        bounds : `dict[str, tuple[float, float]]`
+            A dictionary representing the boundary condition for each 1D hydraulic parameter.
+
+        Examples
+        --------
+        TODO: complete here
+        """
+
+        return {
+            key: value
+            for key, value in DEFAULT_BOUNDS_HY1D_PARAMETERS.items()
+            if key in STRUCTURE_HY1D_PARAMETERS[self.setup.structure]
+        }
+
     def get_rr_initial_states_bounds(self) -> dict[str, tuple[float, float]]:
         """
         Get the boundary condition for the Model rainfall-runoff initial states.
@@ -2478,9 +2604,7 @@ class Model:
         The output contains a list of weight values for trainable layers.
         """
 
-        return [
-            getattr(self._parameters.nn_parameters, f"weight_{i + 1}") for i in range(self.setup.n_layers)
-        ]
+        return [getattr(self._parameters.nn_parameters, f"weight_{i+1}") for i in range(self.setup.n_layers)]
 
     def get_nn_parameters_bias(self) -> list[NDArray[np.float32]]:
         """
@@ -2521,7 +2645,7 @@ class Model:
         The output contains a list of bias values for trainable layers.
         """
 
-        return [getattr(self._parameters.nn_parameters, f"bias_{i + 1}") for i in range(self.setup.n_layers)]
+        return [getattr(self._parameters.nn_parameters, f"bias_{i+1}") for i in range(self.setup.n_layers)]
 
     def set_nn_parameters_weight(
         self,
@@ -2608,10 +2732,10 @@ class Model:
                 np.random.seed(random_state)
 
             for i in range(self.setup.n_layers):
-                (n_neuron, n_in) = getattr(self._parameters.nn_parameters, f"weight_{i + 1}").shape
+                (n_neuron, n_in) = getattr(self._parameters.nn_parameters, f"weight_{i+1}").shape
                 setattr(
                     self._parameters.nn_parameters,
-                    f"weight_{i + 1}",
+                    f"weight_{i+1}",
                     _initialize_nn_parameter(n_in, n_neuron, initializer),
                 )
 
@@ -2621,7 +2745,7 @@ class Model:
 
         else:
             for i, val in enumerate(value):
-                setattr(self._parameters.nn_parameters, f"weight_{i + 1}", val)
+                setattr(self._parameters.nn_parameters, f"weight_{i+1}", val)
 
     def set_nn_parameters_bias(
         self,
@@ -2700,10 +2824,10 @@ class Model:
                 np.random.seed(random_state)
 
             for i in range(self.setup.n_layers):
-                n_neuron = getattr(self._parameters.nn_parameters, f"bias_{i + 1}").shape[0]
+                n_neuron = getattr(self._parameters.nn_parameters, f"bias_{i+1}").shape[0]
                 setattr(
                     self._parameters.nn_parameters,
-                    f"bias_{i + 1}",
+                    f"bias_{i+1}",
                     _initialize_nn_parameter(1, n_neuron, initializer).flatten(),
                 )
 
@@ -2713,7 +2837,7 @@ class Model:
 
         else:
             for i, val in enumerate(value):
-                setattr(self._parameters.nn_parameters, f"bias_{i + 1}", val)
+                setattr(self._parameters.nn_parameters, f"bias_{i+1}", val)
 
     @_model_forward_run_doc_substitution
     @_forward_run_doc_appender

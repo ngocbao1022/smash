@@ -10,6 +10,7 @@ from f90wrap.runtime import FortranDerivedType
 from smash._constant import (
     DEFAULT_RR_INITIAL_STATES,
     DEFAULT_RR_PARAMETERS,
+    DEFAULT_HY1D_PARAMETERS,
     DEFAULT_SERR_MU_PARAMETERS,
     DEFAULT_SERR_SIGMA_PARAMETERS,
     OPTIMIZABLE_NN_PARAMETERS,
@@ -18,6 +19,7 @@ from smash._constant import (
     STRUCTURE_ADJUST_CI,
     STRUCTURE_RR_PARAMETERS,
     STRUCTURE_RR_STATES,
+    STRUCTURE_HY1D_PARAMETERS,
 )
 from smash.core.model._read_input_data import (
     _read_descriptor,
@@ -73,6 +75,18 @@ def _map_dict_to_fortran_derived_type(dct: dict, fdt: FortranDerivedType, skip: 
             else:
                 _map_dict_to_fortran_derived_type(value, fdt)
 
+        # Assume list is used to store FortranDerivedTypeArray. We check that this is a list of
+        # dictionary to be sure that we are dealing with a FortranDerivedTypeArray
+        elif isinstance(value, list):
+            for i, sub_value in enumerate(value):
+                if isinstance(sub_value, dict):
+                    sub_fdt = getattr(fdt, key)[i]
+                    _map_dict_to_fortran_derived_type(sub_value, sub_fdt)
+
+                # % Should be unreachable
+                else:
+                    pass
+
         else:
             if hasattr(fdt, key):
                 setattr(fdt, key, value)
@@ -120,7 +134,7 @@ def _build_parameters(
     input_data: Input_DataDT,
     parameters: ParametersDT,
 ):
-    # % Build parameters
+    # % Build rr parameters
     parameters.rr_parameters.keys = STRUCTURE_RR_PARAMETERS[setup.structure]
 
     # % TODO: May be change this with a constant containing lambda functions such as
@@ -136,6 +150,13 @@ def _build_parameters(
         if key == "llr":
             value *= setup.dt / 3_600
         parameters.rr_parameters.values[..., i] = value
+
+    # % Build 1d hydraulic parameters
+    parameters.hy1d_parameters.keys = STRUCTURE_HY1D_PARAMETERS[setup.structure]
+
+    for i, key in enumerate(parameters.hy1d_parameters.keys):
+        value = DEFAULT_HY1D_PARAMETERS[key]
+        parameters.hy1d_parameters.values[..., i] = value
 
     # % Build initial states
     parameters.rr_initial_states.keys = STRUCTURE_RR_STATES[setup.structure]

@@ -9,7 +9,7 @@ import numpy as np
 
 
 def get_structure() -> list[str]:
-    product = itertools.product(SNOW_MODULE, HYDROLOGICAL_MODULE, ROUTING_MODULE)
+    product = itertools.product(*MODULE)
     product = ["-".join(module) for module in product]
 
     return product
@@ -17,21 +17,34 @@ def get_structure() -> list[str]:
 
 def get_rr_parameters_from_structure(structure: str) -> list[str]:
     rr_parameters = []
-    [rr_parameters.extend(MODULE_RR_PARAMETERS[module]) for module in structure.split("-")]
+    [
+        rr_parameters.extend(MODULE_RR_PARAMETERS[module]) for module in structure.split("-")[:-1]
+    ]  # No rr_parameters in hy1d module
 
     return rr_parameters
 
 
+def get_hy1d_parameters_from_structure(structure: str) -> list[str]:
+    return MODULE_HY1D_PARAMETERS[
+        structure.split("-")[-1]
+    ]  # Only hy1d module (last index) has hy1d parameters
+
+
 def get_rr_states_from_structure(structure: str) -> list[str]:
     rr_states = []
-    [rr_states.extend(MODULE_RR_STATES[module]) for module in structure.split("-")]
+    [
+        rr_states.extend(MODULE_RR_STATES[module]) for module in structure.split("-")[:-1]
+    ]  # No rr_states in hy1d module
 
     return rr_states
 
 
 def get_rr_internal_fluxes_from_structure(structure: str) -> list[str]:
     rr_internal_fluxes = []
-    [rr_internal_fluxes.extend(MODULE_RR_INTERNAL_FLUXES[module]) for module in structure.split("-")]
+    [
+        rr_internal_fluxes.extend(MODULE_RR_INTERNAL_FLUXES[module]) for module in structure.split("-")[:-1]
+    ]  # No rr_internal_fluxes in hy1d module
+
     return rr_internal_fluxes
 
 
@@ -74,7 +87,9 @@ HYDROLOGICAL_MODULE = [
 
 ROUTING_MODULE = ["lag0", "lr", "kw"]
 
-MODULE = SNOW_MODULE + HYDROLOGICAL_MODULE + ROUTING_MODULE
+HY1D_MODULE = ["zero", "kw", "non_inertial"]
+
+MODULE = (SNOW_MODULE, HYDROLOGICAL_MODULE, ROUTING_MODULE, HY1D_MODULE)
 
 
 # % Following SNOW_MODULE order
@@ -202,10 +217,22 @@ MODULE_RR_INTERNAL_FLUXES = dict(
     **ROUTING_MODULE_RR_INTERNAL_FLUXES,
 )
 
+# % Following HY1D_MODULE order. Only in hy1d module
+MODULE_HY1D_PARAMETERS = dict(
+    zip(
+        HY1D_MODULE,
+        [
+            [],  # % zero
+            ["a", "b", "bathy", "manning"],  # % kw
+            ["a", "b", "bathy", "manning"],  # % non_inertial
+        ],
+    )
+)
+
 ### STRUCTURE ###
 #################
 
-# % Product of all modules (snow, hydrological, routing)
+# % Product of all modules (snow, hydrological, routing, hy1d)
 STRUCTURE = get_structure()
 
 # % Following STRUCTURE order
@@ -240,6 +267,15 @@ STRUCTURE_RR_INTERNAL_FLUXES = dict(
     )
 )
 
+# % Following STRUCTURE order
+STRUCTURE_HY1D_PARAMETERS = dict(
+    zip(
+        STRUCTURE,
+        [get_hy1d_parameters_from_structure(s) for s in STRUCTURE],
+    )
+)
+
+
 ## PARAMETERIZATION NN STRUCTURE ##
 ###################################
 
@@ -253,7 +289,7 @@ HYDROLOGICAL_MODULE_INOUT_NEURONS = dict(
                 (4, 4),  # % gr4_mlp
                 (0, 0),  # % gr4_ri
                 (0, 0),  # % gr4_ode
-                (4, 4),  # % gr4_ode_mlp
+                (4, 5),  # % gr4_ode_mlp
                 (0, 0),  # % gr5
                 (4, 4),  # % gr5_mlp
                 (0, 0),  # % gr5_ri
@@ -322,6 +358,13 @@ RR_STATES = [
     "hlr",  # % lr
 ]
 
+HY1D_PARAMETERS = [
+    "a",  # % kw, non_inertial
+    "b",  # % kw, non_inertial
+    "bathy",  # % kw, non_inertial
+    "manning",  # % kw, non_inertial
+]
+
 ### FEASIBLE PARAMETERS ###
 ###########################
 
@@ -377,6 +420,20 @@ FEASIBLE_RR_INITIAL_STATES = dict(
             (0, 1),  # % hmsl
             (0, 1),  # % hbsl
             (0, np.inf),  # % hlr
+        ],
+    )
+)
+
+
+# % Following HY1D_PARAMETERS order
+FEASIBLE_HY1D_PARAMETERS = dict(
+    zip(
+        HY1D_PARAMETERS,
+        [
+            (0, np.inf),  # % a
+            (0, np.inf),  # % b
+            (0, np.inf),  # % bathy
+            (0, np.inf),  # % manning
         ],
     )
 )
@@ -442,6 +499,20 @@ DEFAULT_RR_INITIAL_STATES = dict(
     )
 )
 
+# % Following HY1D_PARAMETERS order
+DEFAULT_HY1D_PARAMETERS = dict(
+    zip(
+        HY1D_PARAMETERS,
+        [
+            0,  # % a
+            0,  # % b
+            0,  # % bathy
+            1e-2,  # % manning
+        ],
+    )
+)
+
+
 ### DEFAULT BOUNDS PARAMETERS ###
 #################################
 
@@ -501,6 +572,19 @@ DEFAULT_BOUNDS_RR_INITIAL_STATES = dict(
     )
 )
 
+# % Following HY1D_PARAMETERS order
+DEFAULT_BOUNDS_HY1D_PARAMETERS = dict(
+    zip(
+        HY1D_PARAMETERS,
+        [
+            (1e-6, 1e3),  # % a
+            (1, 100),  # % b
+            (1e-6, 0.999999),  # % bathy
+            (1e-3, 0.5),  # % manning
+        ],
+    )
+)
+
 ### OPTIMIZABLE PARAMETERS ###
 ##############################
 
@@ -517,6 +601,14 @@ OPTIMIZABLE_RR_INITIAL_STATES = dict(
     zip(
         RR_STATES,
         [True] * len(RR_STATES),
+    )
+)
+
+# % Following HY_PARAMETERS order
+OPTIMIZABLE_HY1D_PARAMETERS = dict(
+    zip(
+        HY1D_PARAMETERS,
+        [False, False, False, True],  # % Only manning parameter is optimizable for the moment
     )
 )
 
@@ -673,6 +765,7 @@ DEFAULT_MODEL_SETUP = {
     "snow_module": "zero",
     "hydrological_module": "gr4",
     "routing_module": "lr",
+    "hy1d_module": "zero",
     "hidden_neuron": 16,
     "serr_mu_mapping": "Zero",
     "serr_sigma_mapping": "Linear",
@@ -840,9 +933,9 @@ MAPPING = ["uniform", "distributed"] + REGIONAL_MAPPING
 
 ADAPTIVE_OPTIMIZER = [opt.lower() for opt in OPTIMIZER_CLASS]
 GRADIENT_BASED_OPTIMIZER = ["lbfgsb"] + ADAPTIVE_OPTIMIZER
-GRADIENT_FREE_OPTIMIZER = ["sbs", "nelder-mead", "powell"]
+HEURISTIC_OPTIMIZER = ["sbs"]
 
-OPTIMIZER = GRADIENT_FREE_OPTIMIZER + GRADIENT_BASED_OPTIMIZER
+OPTIMIZER = HEURISTIC_OPTIMIZER + GRADIENT_BASED_OPTIMIZER
 
 # % Following MAPPING order
 # % The first optimizer for each mapping is used as default optimizer
@@ -874,13 +967,8 @@ GAUGE_ALIAS = ["dws", "all"]
 DEFAULT_TERMINATION_CRIT = dict(
     **dict(
         zip(
-            ["sbs", "nelder-mead", "powell", "lbfgsb"],
-            [
-                {"maxiter": 50},
-                {"maxiter": 200, "xatol": 1e-4, "fatol": 1e-4},
-                {"maxiter": 50},
-                {"maxiter": 100, "factr": 1e6, "pgtol": 1e-12},
-            ],
+            ["sbs", "lbfgsb"],
+            [{"maxiter": 50}, {"maxiter": 100, "factr": 1e6, "pgtol": 1e-12}],
         )
     ),
     **dict(zip(ADAPTIVE_OPTIMIZER, len(ADAPTIVE_OPTIMIZER) * [{"maxiter": 200, "early_stopping": 0}])),
@@ -904,18 +992,6 @@ CONTROL_PRIOR_DISTRIBUTION_PARAMETERS = dict(
 
 SIMULATION_OPTIMIZE_OPTIONS_KEYS = {
     ("uniform", "sbs"): [
-        "parameters",
-        "bounds",
-        "control_tfm",
-        "termination_crit",
-    ],
-    ("uniform", "nelder-mead"): [
-        "parameters",
-        "bounds",
-        "control_tfm",
-        "termination_crit",
-    ],
-    ("uniform", "powell"): [
         "parameters",
         "bounds",
         "control_tfm",
@@ -1001,11 +1077,11 @@ SIMULATION_OPTIMIZE_OPTIONS_KEYS = {
 OPTIMIZER_CONTROL_TFM = {
     (mapping, optimizer): ["sbs", "normalize", "keep"]  # in case of sbs optimizer
     if optimizer == "sbs"
-    else ["normalize", "keep"]  # for other optimizers (not used with ann mapping)
+    else ["normalize", "keep"]  # in case of ann mapping
     if mapping != "ann"
-    else ["keep"]  # no tfm applied for any optimizer used with ann mapping
+    else ["keep"]  # other cases
     for mapping, optimizer in SIMULATION_OPTIMIZE_OPTIONS_KEYS.keys()
-}  # first element of the list is the default tfm for each tuple key (mapping, optimizer)
+}
 
 DEFAULT_SIMULATION_COST_OPTIONS = {
     "forward_run": {
@@ -1121,6 +1197,7 @@ MODEL_DDT_IO_ATTR_KEYS = {
     "atmos_data": ["mean_prcp", "mean_pet", "mean_snow", "mean_temp"],
     "rr_parameters": ["keys", "values"],
     "rr_initial_states": ["keys", "values"],
+    "hy1d_parameters": ["keys", "values"],
     "nn_parameters": NN_PARAMETERS_KEYS,
     "serr_mu_parameters": ["keys", "values"],
     "serr_sigma_parameters": ["keys", "values"],

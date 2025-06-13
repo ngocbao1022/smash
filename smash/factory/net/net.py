@@ -203,7 +203,6 @@ class Net(object):
             - ``'leakyrelu'`` : Leaky Rectified Linear Unit
             - ``'tanh'`` : Hyperbolic Tangent
             - ``'softplus'`` : Softplus
-            - ``'silu'`` : Sigmoid Linear Unit
 
         kernel_initializer : str, default 'glorot_uniform'
             Kernel initialization method. Should be one of ``'uniform'``, ``'glorot_uniform'``,
@@ -284,7 +283,6 @@ class Net(object):
             - ``'leakyrelu'`` : Leaky Rectified Linear Unit
             - ``'tanh'`` : Hyperbolic Tangent
             - ``'softplus'`` : Softplus
-            - ``'silu'`` : Sigmoid Linear Unit
 
         kernel_initializer : str, default 'glorot_uniform'
             Kernel initialization method. Should be one of ``'uniform'``, ``'glorot_uniform'``,
@@ -546,6 +544,7 @@ class Net(object):
         # calculate the gradient of J wrt rr_parameters and rr_initial_states
         # that are the output of the descriptors-to-parameters (d2p) NN
         # and get the gradient of the pmtz NN (pmtz) if used
+        # TODO: get the gradient hydraulic parameters if used
         grad_d2p_init, grad_pmtz = _get_gradient_value(
             self, x_train, calibrated_parameters, instance, parameters, wrap_options, wrap_returns
         )
@@ -557,7 +556,9 @@ class Net(object):
         cost = _get_cost_value(instance)  # forward_run to update cost inside _get_gradient_value
 
         if verbose:
-            print(f"{' ' * 4}At iterate {0:>5}    nfg = {1:>5}    J = {cost:>.5e}    |proj g| = {projg:>.5e}")
+            print(
+                f"{' '*4}At iterate {0:>5}    nfg = {1:>5}    J = {cost:>.5e}    " f"|proj g| = {projg:>.5e}"
+            )
 
         # % Early stopping
         istop = 0
@@ -566,6 +567,8 @@ class Net(object):
         # % Initialize optimizer for the pmtz NN if used
         ind = ADAPTIVE_OPTIMIZER.index(optimizer)
         func = eval(OPTIMIZER_CLASS[ind])
+
+        # % TODO: Init opt for hydraulic parameters if used
 
         opt_nn_parameters = [func(learning_rate=learning_rate) for _ in range(2 * instance.setup.n_layers)]
 
@@ -579,6 +582,8 @@ class Net(object):
                         key,
                         opt_nn_parameters[i].update(getattr(parameters.nn_parameters, key), grad_pmtz[i]),
                     )
+
+                # % TODO: update trainable hydraulic parameters if used
 
             self._backward_pass(grad_d2p_init, inplace=True)  # update weights of the d2p NN
 
@@ -610,7 +615,7 @@ class Net(object):
                     # iterations
                     if verbose:
                         print(
-                            f"{' ' * 4}EARLY STOPPING: NO IMPROVEMENT for {early_stopping} CONSECUTIVE "
+                            f"{' '*4}EARLY STOPPING: NO IMPROVEMENT for {early_stopping} CONSECUTIVE "
                             f"ITERATIONS"
                         )
                     break
@@ -642,18 +647,18 @@ class Net(object):
 
             if verbose:
                 print(
-                    f"{' ' * 4}At iterate {ite:>5}    nfg = {ite + 1:>5}    J = {cost:>.5e}    "
+                    f"{' '*4}At iterate {ite:>5}    nfg = {ite+1:>5}    J = {cost:>.5e}    "
                     f"|proj g| = {projg:>.5e}"
                 )
 
                 if ite == maxiter:
-                    print(f"{' ' * 4}STOP: TOTAL NO. of ITERATIONS REACHED LIMIT")
+                    print(f"{' '*4}STOP: TOTAL NO. of ITERATIONS REACHED LIMIT")
 
         if early_stopping:
             if opt_info["ite"] < maxiter:
                 if verbose:
                     print(
-                        f"{' ' * 4}Revert to iteration {opt_info['ite']} with "
+                        f"{' '*4}Revert to iteration {opt_info['ite']} with "
                         f"J = {opt_info['cost']:.5e} due to early stopping"
                     )
 

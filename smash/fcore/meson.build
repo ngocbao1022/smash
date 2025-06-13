@@ -25,6 +25,7 @@ md_f90_sources = [
     'forward/md_simulation.f90',
 
     'operator/md_gr_operator.f90',
+    'operator/md_hy1d_operator.f90',
     'operator/md_neural_network.f90',
     'operator/md_routing_operator.f90',
     'operator/md_snow_operator.f90',
@@ -48,6 +49,8 @@ mwd_f90_sources = [
     'derived_type/mwd_common_options.f90',
     'derived_type/mwd_control.f90',
     'derived_type/mwd_cost_options.f90',
+    'derived_type/mwd_cross_section.f90',
+    'derived_type/mwd_hy1d_parameters.f90',
     'derived_type/mwd_input_data.f90',
     'derived_type/mwd_mesh.f90',
     'derived_type/mwd_nn_parameters.f90',
@@ -61,6 +64,7 @@ mwd_f90_sources = [
     'derived_type/mwd_returns.f90',
     'derived_type/mwd_rr_parameters.f90',
     'derived_type/mwd_rr_states.f90',
+    'derived_type/mwd_segment.f90',
     'derived_type/mwd_serr_mu_parameters.f90',
     'derived_type/mwd_serr_sigma_parameters.f90',
     'derived_type/mwd_setup.f90',
@@ -126,12 +130,7 @@ foreach i : range(f90wrap_f90_output.length())
     f90wrap_f90_sources += f90wrap_sources[i]
 endforeach
 
-f2py_f90wrap = [
-    py,
-    files('../../f90wrap/generate_f2py-f90wrap.py'),
-    '@INPUT@',
-    '--build-dir', '@OUTDIR@',
-]
+f2py_f90wrap = ['f2py-f90wrap', '@INPUT@', '--build-dir', '@OUTDIR@', '--lower']
 
 f2py_f90wrap_sources = custom_target(
     input: f90wrap_f90_sources,
